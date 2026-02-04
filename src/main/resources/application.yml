@@ -1,0 +1,31 @@
+server:
+  port: 8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+jwt:
+  secret: oTIu0wcG74gvm+AtU907bamJK3EraoAgcAia09SmWIZgsKUFipeU12DmPawCVPO8FZUf4PJGL5fXWrNDoVG4uQ==
+  clock-skew-seconds: 0
+
+spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: auth-service
+              uri: http://localhost:8082
+              predicates:
+                - Path=/auth/**
+              filters:
+                - StripPrefix=1
+            - id: alloc-monolith
+              uri: http://localhost:8080
+              predicates:
+                - Path=/alloc/**
+              filters:
+                - StripPrefix=1

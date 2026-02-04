@@ -1,0 +1,33 @@
+spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: auth
+              uri: http://auth-service:8081
+              predicates:
+                - Path=/auth/**
+              filters:
+                - StripPrefix=1
+
+            - id: alloc
+              uri: http://alloc-service:8080
+              predicates:
+                - Path=/alloc/**
+              filters:
+                - StripPrefix=1
+
+            - id: noti
+              uri: http://notification-service:8083
+              predicates:
+                - Path=/noti/**
+              filters:
+                - StripPrefix=1
+
+            - id: ai
+              uri: http://ai-service:8000
+              predicates:
+                - Path=/ai/**
+              filters:
+                - StripPrefix=1
