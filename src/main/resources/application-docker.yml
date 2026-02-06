@@ -5,18 +5,14 @@ spring:
         webflux:
           routes:
             - id: auth
-              uri: http://auth-service:8081
+              uri: http://moirai-auth:8082
               predicates:
-                - Path=/auth/**
-              filters:
-                - StripPrefix=1
+                - Path=/api/auth/**
 
             - id: alloc
-              uri: http://alloc-service:8080
+              uri: http://moirai-alloc:8080
               predicates:
-                - Path=/alloc/**
-              filters:
-                - StripPrefix=1
+                - Path=/api/**
 
             - id: noti
               uri: http://notification-service:8083

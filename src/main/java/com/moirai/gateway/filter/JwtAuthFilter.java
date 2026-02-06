@@ -42,15 +42,11 @@ public class JwtAuthFilter implements GlobalFilter {
     // 인증 없이 접근 가능한 경로
     // Path는 Gateway로 들어오는 실제 path 기준
     private static final List<String> PUBLIC_PATHS = List.of(
-            "/actuator/health",
-            "/alloc/api/auth/login",
-            "/alloc/api/auth/refresh",
-            "/alloc/api/auth/logout",
-            "/alloc/api/auth/password/reset/**",
-            "/auth/api/auth/login",
-            "/auth/api/auth/refresh",
-            "/auth/api/auth/logout",
-            "/auth/api/auth/password/reset/**"
+            "/actuator/**",
+            "/api/auth/login",
+            "/api/auth/refresh",
+            "/api/auth/logout",
+            "/api/auth/password/reset/**"
     );
 
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
