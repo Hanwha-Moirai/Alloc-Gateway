@@ -14,8 +14,8 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpCookie;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -32,21 +32,10 @@ public class JwtAuthFilter implements GlobalFilter {
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String UNAUTHORIZED_BODY = "{\"message\":\"Unauthorized\"}";
 
-    // 외부 요청 경로 정책(가안):
-    // /auth/**  : 인증 서비스
-    // /alloc/** : alloc 서비스(현재 모놀리식)
-    // /noti/**  : 알림 서비스
-    // /ai/**    : AI 서비스
-
-
-    // 인증 없이 접근 가능한 경로
-    // Path는 Gateway로 들어오는 실제 path 기준
+    // 인증 없이 접근 가능한 경로 (Gateway로 들어오는 실제 path 기준)
     private static final List<String> PUBLIC_PATHS = List.of(
             "/actuator/**",
-            "/api/auth/login",
-            "/api/auth/refresh",
-            "/api/auth/logout",
-            "/api/auth/password/reset/**"
+            "/api/auth/**"
     );
 
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
@@ -55,8 +44,6 @@ public class JwtAuthFilter implements GlobalFilter {
     public JwtAuthFilter(@Value("${jwt.secret}") String secretBase64) {
         byte[] keyBytes = Decoders.BASE64.decode(secretBase64);
         this.signingKey = Keys.hmacShaKeyFor(keyBytes);
-
-        // 키 값은 보안상 절대 출력하지 않음 (길이만)
         log.info("[GW][AUTH] jwt signing key initialized keyBytesLength={}", keyBytes.length);
     }
 
@@ -78,6 +65,15 @@ public class JwtAuthFilter implements GlobalFilter {
         String path = req.getURI().getPath();
         String cid = req.getHeaders().getFirst(FilterUtils.CORRELATION_ID);
 
+        // CORS preflight(OPTIONS)는 인증 없이 통과
+        // 브라우저는 cross-origin 요청 중 (커스텀 헤더/credentials 등) preflight가 필요하면
+        // 실제 요청 전에 OPTIONS를 먼저 보낸다.
+        // 여기서 401/403이 나면 preflight가 실패해서 브라우저가 실제 요청을 아예 보내지 않는다.
+        if ("OPTIONS".equalsIgnoreCase(method)) {
+            log.debug("[GW][AUTH] OPTIONS preflight bypassed cid={} path={}", cid, path);
+            return chain.filter(exchange);
+        }
+
         // 1) 공개 경로는 인증 없이 통과
         if (isPublicPath(path)) {
             log.debug("[GW][AUTH] public path bypassed cid={} method={} path={}", cid, method, path);
@@ -98,7 +94,7 @@ public class JwtAuthFilter implements GlobalFilter {
                     .parseSignedClaims(token)
                     .getPayload();
 
-            // 3) Alloc 정책과 동일하게 refresh 토큰은 인증에 사용 금지
+            // 3) refresh 토큰은 인증에 사용 금지
             String typ = claims.get("typ", String.class);
             if ("refresh".equals(typ)) {
                 log.warn("[GW][AUTH] refresh token cannot be used for authorization cid={} method={} path={}",
@@ -106,7 +102,7 @@ public class JwtAuthFilter implements GlobalFilter {
                 return unauthorized(exchange);
             }
 
-            // 4) 사용자 컨텍스트 헤더 주입 (스푸핑 방지: 기존 헤더 제거 후 검증된 값으로만 재주입)
+            // 4) 사용자 컨텍스트 헤더 주입
             String userId = claims.getSubject();
             String role = claims.get("role", String.class);
 
@@ -123,7 +119,6 @@ public class JwtAuthFilter implements GlobalFilter {
             return chain.filter(exchange);
 
         } catch (JwtException | IllegalArgumentException ex) {
-            // 토큰 값은 로그에 남기지 않음
             log.warn("[GW][AUTH] token validation failed cid={} method={} path={} reason={}",
                     cid, method, path, ex.getMessage());
             return unauthorized(exchange);

@@ -1,29 +1,30 @@
+server:
+  port: 8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+jwt:
+  secret: ${JWT_SECRET}
+
 spring:
   cloud:
     gateway:
-      server:
-        webflux:
-          routes:
-            - id: auth
-              uri: http://moirai-auth:8082
-              predicates:
-                - Path=/api/auth/**
-
-            - id: alloc
-              uri: http://moirai-alloc:8080
-              predicates:
-                - Path=/api/**
-
-            - id: noti
-              uri: http://notification-service:8083
-              predicates:
-                - Path=/noti/**
-              filters:
-                - StripPrefix=1
-
-            - id: ai
-              uri: http://ai-service:8000
-              predicates:
-                - Path=/ai/**
-              filters:
-                - StripPrefix=1
+      routes:
+        - id: auth
+          uri: http://moirai-auth-service:8082
+          predicates:
+            - Path=/api/auth/**
+        - id: alloc
+          uri: http://moirai-core-service-dev:8080
+          predicates:
+            - Path=/api/**
+        - id: ai
+          uri: http://moirai-rag-service:8000
+          predicates:
+            - Path=/api/projects/**
+          filters:
+            - StripPrefix=1
