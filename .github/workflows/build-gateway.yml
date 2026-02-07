@@ -1,0 +1,108 @@
+name: Build & Deploy moirai-gateway
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      img-tag: ${{ steps.tag.outputs.this }}
+      img-uri: ${{ steps.image.outputs.uri }}
+
+    steps:
+      - name: Generate image tag
+        id: tag
+        run: echo "this=$(date +'%y%m%d%H%M')-${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: ap-northeast-2
+
+      - name: ECR login
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build image uri
+        id: image
+        run: echo "uri=${{ steps.login-ecr.outputs.registry }}/moirai-gateway" >> "$GITHUB_OUTPUT"
+
+      - name: Setup buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & Push
+        env:
+          IMG_URI: ${{ steps.image.outputs.uri }}
+          IMG_TAG: ${{ steps.tag.outputs.this }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ env.IMG_URI }}:${{ env.IMG_TAG }}
+          cache-to: type=registry,ref=${{ env.IMG_URI }}:cache,mode=max
+          cache-from: type=registry,ref=${{ env.IMG_URI }}:cache
+          platforms: linux/amd64
+
+      - name: Summary
+        env:
+          IMG_URI: ${{ steps.image.outputs.uri }}
+          IMG_TAG: ${{ steps.tag.outputs.this }}
+        run: |
+          echo "# Image pushed" >> $GITHUB_STEP_SUMMARY
+          echo "image: \`${IMG_URI}:${IMG_TAG}\`" >> $GITHUB_STEP_SUMMARY
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: ap-northeast-2
+
+      - name: Download task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition moirai-gateway-task \
+            --query taskDefinition \
+          | jq 'del(
+              .taskDefinitionArn,
+              .revision,
+              .status,
+              .requiresAttributes,
+              .compatibilities,
+              .registeredAt,
+              .registeredBy
+            )' > task-definition.json
+
+      - name: Render new task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: moirai-gateway
+          image: ${{ needs.build.outputs.img-uri }}:${{ needs.build.outputs.img-tag }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: moirai-gateway
+          cluster: app-ecs-fargate-cluster
+          wait-for-service-stability: true
